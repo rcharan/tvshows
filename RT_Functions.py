@@ -1,95 +1,154 @@
 import requests
 from bs4 import BeautifulSoup as BS
 import time
-import mysql.connector 
-db_name = 'tvshows'
-cnx = mysql.connector.connect(
-    host = "mon-dragon.cwxehvwsg5bg.us-east-1.rds.amazonaws.com",
-    user = "findlay",
-    password = "tvshow-*",
-    database = db_name
-)
-cursor = cnx.cursor() 
+import pandas as pd
+import mysql.connector
+import string
+import tvbythenumbers as utilities
 
-cursor.execute('''SELECT s.show FROM tv_by_the_numbers_articles s LIMIT 100''')
-list_of_tv_shows = cursor.fetchall()
+################################################################################
+#
+# Part 1 : Get a list of TV Shows to search for
+#
+################################################################################
 
-list_of_tv_shows
+def find_on_rotten_tomatoes(list_of_shows):
+    list_of_rotten_tomatoes_urls = []
+    def fix_name(s):
+        allowed_characters = string.ascii_lowercase + ' _'
+        s = ''.join(filter(lambda c : c in allowed_characters, s.lower()))
+        s = s.replace(' ','_')
+        return s
 
-string_list_of_tv_shows = [''.join(i) for i in list_of_tv_shows] 
+    for show, i in enumerate(list_of_shows):
+        if i % 10 == 0:
+            print('Attempting show number {i}')
+        try:
+            rt_name = fix_name(show)
+            r = requests.get(f'https://www.rottentomatoes.com/tv/{rt_name}')
+            if r.status_code == 200:
+                url = f'https://www.rottentomatoes.com/tv/{rt_name}'
+                out_dict = {'by_the_numbers_name' : show,
+                            'rt_name'             : rt_name,
+                            'url'                 : url}
+                list_of_rotten_tomatoes_urls.append(out_dict)
+        except Exception as e:
+            print('\n------SOMETHING WENT HORRIBLY WRONG-----')
+            print(f'show was {show}')
+            print(e)
+            print('\n')
+            time.sleep(1)
+            continue
 
-string_list_of_tv_shows
-  
-list_of_tv_shows
+        time.sleep(0.05)
 
-find_on_rotten_tomatoes(string_list_of_tv_shows)
+    return list_of_rotten_tomatoes_urls
 
+################################################################################
+#
+# Part #2 Parse
+#
+################################################################################
 
-def tv_show_info(url):
+def tv_show_info(soup, **kwargs):
     rt_show_info = {}
-    soup = BS((requests.get(url)).content, 'html.parser')
+    url = kwargs['url']
+    rt_show_info['url'] = url
+
+    # Get the TV Show name from RT
     name = soup.find('h1', class_='mop-ratings-wrap__title mop-ratings-wrap__title--top')
     name = name.get_text()
-    name = name.split('\n')
-    rt_show_info['title'] = name[1].strip()
+    name = name.strip()
+    rt_show_info['title'] = name
+
+    # Get the TV Show Critics Rating from RT
     cri_rating = soup.find('div', class_='mop-ratings-wrap__half critic-score')
     cri_rating = cri_rating.find('span', class_='mop-ratings-wrap__percentage')
     if cri_rating is None:
-        rt_show_info['critic_rating'] == 'none'
+        rt_show_info['critic_rating'] = None
     else:
         cri_rating = cri_rating.get_text().strip()
         cri_rating = cri_rating.strip('%')
         rt_show_info['critic_rating'] = cri_rating
+
+    # Get the TV Show Audience Rating from RT
     aud_rating = soup.find('div', class_='mop-ratings-wrap__half audience-score')
     aud_rating = aud_rating.find('span', class_='mop-ratings-wrap__percentage')
     if aud_rating is None:
-        rt_show_info['audience_rating'] == 'none'
+        rt_show_info['audience_rating'] = None
     else:
         aud_rating = aud_rating.get_text().strip()
         aud_rating = aud_rating.strip('%')
         rt_show_info['audience_rating'] = aud_rating
-    list_of_info = []
+
+    #TO DO = Get the Creator
+
+
     page = soup.find('div', class_='col-right col-full-xs pull-right')
     page = page.find('div', class_='panel-body content_body')
+
+    field_dict = \
+    {'TV Network'          : 'network'
+    ,'Premiere Date'       : 'premiere_date'
+    ,'Genre'               : 'genre'
+    ,'Creator'             : 'creator'
+    ,'Executive Producer'  : 'executive_producers'
+    ,'Executive Producers' : 'executive_producers'}
+
+    def parse_ep(ep_str):
+        return str(list(
+           filter(None,
+            map(lambda s : s.strip(' ,'),
+                ep_str.split('\n')
+               ))))
+
     for row in page.find_all('tr'):
-        for cell in row("td"):
-            info = cell.get_text()
-            all_info = (info.split())
-            list_of_info.append(all_info)
-    rt_show_info['genre'] = list_of_info[5]
-    rt_show_info['network'] = list_of_info[1]
-    rt_show_info['premiere_date'] = list_of_info[3]
-    rt_show_info['producers'] = list_of_info[-1]
-    return rt_show_info
+        entries = [r.get_text().strip() for r in row('td')]
+        key = entries[0].strip(':')
+        val = entries[1]
+        if key not in field_dict:
+            print(f'Unexpected Table Key {key}'
+                  f' with value {val}'
+                  f' at url {url}')
+            raise utilities.UnexpectedDataFormat('Unknown Key')
+        field = field_dict[key]
+        if field == 'executive_producers':
+            val = parse_ep(val)
+        if not val:
+            val = None
+        rt_show_info[field] = val
+
+    return pd.DataFrame.from_records([rt_show_info])
+
+################################################################################
+#
+# Part 3 Glue everything together
+#
+################################################################################
+
+def get_missing_rt_data():
+    target = utilities.query_list('url', 'rt_urls')
+    to_do  = utilities._get_missing_scrape_targets(target,
+                                       'url',
+                                       'rt_data')
+    return to_do
+
+def _insert_rt_data(df, **kwargs):
+    df.to_sql('rt_data', utilities.db, index = False, if_exists = 'append')
 
 
-tv_show_info('https://www.rottentomatoes.com/tv/REAL_TIME_WITH_BILL_MAHER')
+fetch_rt_data = utilities._create_data_fetcher(tv_show_info, _insert_rt_data)
 
 
+def update_rt_data(on_fail = 'abort', sleep_time = 0.1):
+    to_do = get_missing_rt_data()
+    return utilities.iterate_scraping(fetch_rt_data, to_do, sleep_time = sleep_time, on_fail = on_fail)
 
-list_of_shows = ['Modern Family', 'Arrow', 'The Flash', 'MAYANS M.C']
-
-def find_on_rotten_tomatoes(list_of_shows):
-    list_of_rotten_tomatoes_urls =[]
-    did_not_work = []
-    for show in list_of_shows:
-        show = show.replace(' ','_')
-        show = show.replace('.','')
-        r = requests.get('https://www.rottentomatoes.com/tv/%s' % show)
-        r.status_code
-        if r.status_code == 200:
-            url = ('https://www.rottentomatoes.com/tv/%s' % show)
-            print('nice')
-            list_of_rotten_tomatoes_urls.append(url)
-        else:
-            did_not_work.append(show)
-            print('did not work')
-            print(show)
-    return list_of_rotten_tomatoes_urls
-
-list_of_urls = find_on_rotten_tomatoes(list_of_tv_shows)
-
-print(list_of_urls)
+################################################################################
+#
+# Part # One field at a time
+#
+################################################################################
 
 
 def get_critic_rating(url):
@@ -102,14 +161,12 @@ def get_critic_rating(url):
     critic_rating['critic_rating'] = cri_rating
     return critic_rating
 
-get_critic_rating('https://www.rottentomatoes.com/tv/REAL_TIME_WITH_BILL_MAHER')
+# get_critic_rating('https://www.rottentomatoes.com/tv/REAL_TIME_WITH_BILL_MAHER')
+# get_critic_rating(list_of_urls)
+# for x in list_of_urls:
+    # print(x)
 
-get_critic_rating(list_of_urls)
-
-for x in list_of_urls:
-    print(x)
-
-get_critic_rating('https://www.rottentomatoes.com/tv/prodigal_son/s01')
+# get_critic_rating('https://www.rottentomatoes.com/tv/prodigal_son/s01')
 
 def get_audience_rating(url):
     soup = BS((requests.get(url)).content, 'html.parser')
@@ -120,7 +177,7 @@ def get_audience_rating(url):
     rt_show_info['audience_rating'] = aud_rating
 
 
-get_audience_rating('https://www.rottentomatoes.com/tv/prodigal_son/s01')
+# get_audience_rating('https://www.rottentomatoes.com/tv/prodigal_son/s01')
 
 def get_genre(url):
     list_of_info = []
@@ -134,9 +191,9 @@ def get_genre(url):
             all_info = (info.split())
             list_of_info.append(all_info)
     return list_of_info[5]
-         
 
-get_genre('https://www.rottentomatoes.com/tv/prodigal_son')
+
+# get_genre('https://www.rottentomatoes.com/tv/prodigal_son')
 
 def get_network(url):
     list_of_info = []
@@ -150,7 +207,7 @@ def get_network(url):
             list_of_info.append(all_info)
     return (list_of_info[1])
 
-get_network('https://www.rottentomatoes.com/tv/prodigal_son')
+# get_network('https://www.rottentomatoes.com/tv/prodigal_son')
 
 
 def get_premiere_date(url):
@@ -164,8 +221,8 @@ def get_premiere_date(url):
             all_info = (info.split())
             list_of_info.append(all_info)
     return (list_of_info[3])
-         
-get_premiere_date('https://www.rottentomatoes.com/tv/prodigal_son')
+
+# get_premiere_date('https://www.rottentomatoes.com/tv/prodigal_son')
 
 
 def get_producers(url):
@@ -180,21 +237,21 @@ def get_producers(url):
             list_of_info.append(all_info)
     return (list_of_info[-1])
 
-get_producers('https://www.rottentomatoes.com/tv/prodigal_son')
+# get_producers('https://www.rottentomatoes.com/tv/prodigal_son')
 
 def get_producers_season(url):
     list_of_info = [] #list of data from site
     soup = BS((requests.get(url)).content, 'html.parser')
-    page = soup.find('section', class_='panel panel-rt panel-box movie_info') #first section    
+    page = soup.find('section', class_='panel panel-rt panel-box movie_info') #first section
     page = page.find('ul', class_='content-meta info') #second section
-    for row in page.find_all('div'): 
+    for row in page.find_all('div'):
         info = row.get_text().split()
         list_of_info.append(info)
     clean_list = (list_of_info[-1]) #getting specific info - producers
     cleaner_list = ''.join(clean_list) #getting rid of commas
     return cleaner_list
 
-get_producers_season('https://www.rottentomatoes.com/tv/castle_rock/s02')
+# get_producers_season('https://www.rottentomatoes.com/tv/castle_rock/s02')
 
 def get_genre_season(url):
     list_of_info = []
@@ -208,7 +265,7 @@ def get_genre_season(url):
     cleaner_list = ''.join(clean_list)
     return cleaner_list
 
-get_genre_season('https://www.rottentomatoes.com/tv/castle_rock/s02')
+# get_genre_season('https://www.rottentomatoes.com/tv/castle_rock/s02')
 
 def get_network_season(url):
     list_of_info = []
@@ -222,7 +279,7 @@ def get_network_season(url):
     cleaner_list = ''.join(clean_list)
     return cleaner_list
 
-get_network_season('https://www.rottentomatoes.com/tv/castle_rock/s02')
+# get_network_season('https://www.rottentomatoes.com/tv/castle_rock/s02')
 
 def get_premiere_date_season(url):
     list_of_info = []
@@ -234,9 +291,9 @@ def get_premiere_date_season(url):
         list_of_info.append(info)
     clean_list = (list_of_info[5])
     cleaner_list = ''.join(clean_list)
-    return cleaner_list 
+    return cleaner_list
 
-get_premiere_date_season('https://www.rottentomatoes.com/tv/castle_rock/s02')
+# get_premiere_date_season('https://www.rottentomatoes.com/tv/castle_rock/s02')
 
 def get_name_of_show_season(url):
     soup = BS((requests.get(url)).content, 'html.parser')
@@ -245,7 +302,7 @@ def get_name_of_show_season(url):
     page = page.split('\n')
     return (page[1])
 
-get_name_of_show_season('https://www.rottentomatoes.com/tv/mayans_m_c_/s02')
+# get_name_of_show_season('https://www.rottentomatoes.com/tv/mayans_m_c_/s02')
 
 def get_name_of_show(url):
     soup = BS((requests.get(url)).content, 'html.parser')
@@ -254,42 +311,4 @@ def get_name_of_show(url):
     page = page.split('\n')
     return (page[1])
 
-get_name_of_show('https://www.rottentomatoes.com/tv/FORGED_IN_FIRE')
-
-
-# def find_on_rotten_tomatoes(string):
-#     string = string.replace(' ','_')
-#     r = requests.get('https://www.rottentomatoes.com/tv/%s' % string)
-#     r.status_code
-#     if r.status_code == 200:
-#         url = ('https://www.rottentomatoes.com/tv/%s' % string)
-#         print('nice')
-#         return url
-#     else:
-#         pass
-
-find_on_rotten_tomatoes('FORGED IN FIRE')
-
-
-list_of_shows = ['Modern Family', 'Arrow', 'The Flash', 'MAYANS M.C']
-
-def find_on_rotten_tomatoes(list_of_shows):
-    list_of_rotten_tomatoes_urls =[]
-    did_not_work = []
-    for show in list_of_shows:
-        show = show.replace(' ','_')
-        show = show.replace('.','')
-        r = requests.get('https://www.rottentomatoes.com/tv/%s' % show)
-        r.status_code
-        if r.status_code == 200:
-            url = ('https://www.rottentomatoes.com/tv/%s' % show)
-            print('nice')
-            list_of_rotten_tomatoes_urls.append(url)
-        else:
-            did_not_work.append(show)
-            print('did not work')
-    return list_of_rotten_tomatoes_urls
-
-list_of_urls = find_on_rotten_tomatoes(list_of_shows)
-
-print(list_of_urls)
+# get_name_of_show('https://www.rottentomatoes.com/tv/FORGED_IN_FIRE')

@@ -10,40 +10,7 @@ import time
 import re
 import copy
 import mysql.connector
-config.schema = 'tvshows'
-
-
-################################################################################
-#
-# Part 1 : Set up a database connection and utilities
-#           available throughout
-#
-################################################################################
-
-_sql_alchemy_connection = (
-                                f'mysql+mysqlconnector://'
-                                f'{config.user}:{config.password}'
-                                f'@{config.host}:{config.port}'
-                                f'/{config.schema}'
-                           )
-db = sqlalchemy.create_engine(_sql_alchemy_connection,
-                              echo = False,
-                              connect_args = {'ssl_disabled' : True})
-
-def query(q):
-    return pd.read_sql_query(q, db)
-
-def query_list(col, table, distinct = True):
-    elts = ['SELECT',
-            'DISTINCT' if distinct else '',
-            col,
-            'FROM',
-            table]
-    query_str = ' '.join(elts)
-    df = query(query_str)
-    l = df.iloc[:,0].tolist()
-    return l
-
+from db import db, query, query_list
 
 ################################################################################
 #

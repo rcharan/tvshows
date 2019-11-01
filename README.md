@@ -10,7 +10,7 @@ audience reviews don't have much to do with what people actually watch.
 ## Background
 This is our Flatiron School (NYC Data Science) Module 1 project
 
-See the presentation and conclusions on [Google Pages](https://docs.google.com/presentation/d/1dP1xmHtrPHWAQQHPZnXCRq4pj1hd0MhsZ-TQ6PKXw7k/edit?usp=sharing) or view the pdf ShakeItOff.pdf in our repo.
+See the presentation and conclusions on [Google Pages](https://docs.google.com/presentation/d/1dP1xmHtrPHWAQQHPZnXCRq4pj1hd0MhsZ-TQ6PKXw7k/edit?usp=sharing) or view the pdf shake-it-off.pdf in our repo.
 
 ## Project Purpose and Description
  - The purpose of this project was to provide actionable insights to a

@@ -10,7 +10,7 @@ audience reviews don't have much to do with what people actually watch.
 ## Background
 This is our Flatiron School (NYC Data Science) Module 1 project
 
-See the presentation and conclusions on [Google Pages](https://docs.google.com/presentation/d/1dP1xmHtrPHWAQQHPZnXCRq4pj1hd0MhsZ-TQ6PKXw7k/edit?usp=sharing) or view the pdf shake-it-off.pdf in our repo.
+See the presentation and conclusions on [Google Slides](https://docs.google.com/presentation/d/1dP1xmHtrPHWAQQHPZnXCRq4pj1hd0MhsZ-TQ6PKXw7k/edit?usp=sharing) or view the pdf shake-it-off.pdf in our repo.
 
 ## Project Purpose and Description
  - The purpose of this project was to provide actionable insights to a
@@ -19,7 +19,7 @@ See the presentation and conclusions on [Google Pages](https://docs.google.com/p
  - An ancillary purpose was to demonstrate and practice our new-found skills
  in web scraping, API usage, SQL, pandas, visualization (matplotlib/seaborn), and creation of ETL pipelines.
  - Data:
-   1. Nielsen Ratings (national overnights 18--49) on a daily basis for broadcast primetime and the top 25 cable shows. Scraped from [TV By the Numbers](https://tvbythenumbers.zap2it.com). Available back to 2015
+   1. Nielsen Ratings (national overnights 18&ndash;49) on a daily basis for broadcast primetime and the top 25 cable shows. Scraped from [TV By the Numbers](https://tvbythenumbers.zap2it.com). Available back to 2015
    2. Rotten Tomatoes audience and critics scores for matched TV shows (766)
    3. A list of Netflix and Amazon shows (via Wikipedia: [Netflix](https://en.wikipedia.org/wiki/List_of_original_programs_distributed_by_Netflix), [Amazon](https://en.wikipedia.org/wiki/List_of_original_programs_distributed_by_Amazon))
  - Tools (all in Python):
